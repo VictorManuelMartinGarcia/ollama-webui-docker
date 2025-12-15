@@ -1,12 +1,12 @@
 #!/bin/bash
 
-echo "=== Detectando hardware ==="
+echo "=== Detecting  hardware ==="
 
 GPU_SECTION=""
 
 # NVIDIA
 if command -v nvidia-smi &>/dev/null; then
-  echo "✅ GPU NVIDIA detectada"
+  echo "✅ GPU NVIDIA detected"
   GPU_SECTION="
     deploy:
       resources:
@@ -20,7 +20,7 @@ if command -v nvidia-smi &>/dev/null; then
 
 # AMD ROCm
 elif command -v rocminfo &>/dev/null; then
-  echo "✅ GPU AMD ROCm detectada"
+  echo "✅ GPU AMD ROCm detected"
   export HSA_OVERRIDE_GFX_VERSION=10.3.0
   GPU_SECTION="
     deploy:
@@ -35,20 +35,18 @@ elif command -v rocminfo &>/dev/null; then
 
 # CPU
 else
-  echo "⚠️ No se detectó GPU compatible. Usando CPU."
+  echo "⚠️ No compatible GPU detected. Using CPU."
   GPU_SECTION=""
 fi
 
-echo "=== Generando docker-compose.generated.yml ==="
+echo "=== Generating docker-compose.generated.yml ==="
 
-# Insertar GPU_SECTION solo si no está vacío
 if [[ -n "$GPU_SECTION" ]]; then
   awk -v gpu="$GPU_SECTION" '
       /container_name: ollama/ {print; getline; print; print gpu; next}
       {print}
     ' compose/docker-compose.template.yml > compose/docker-compose.generated.yml
 else
-  # Si no hay GPU, eliminar cualquier bloque deploy/resources/reservations/devices del template
   awk '
     BEGIN {skip=0}
     /deploy:/ {skip=1}
@@ -58,16 +56,15 @@ else
   ' compose/docker-compose.template.yml > compose/docker-compose.generated.yml
 fi
 
-echo "✅ Archivo generado: docker-compose.generated.yml"
-echo "=== Iniciando contenedores ==="
+echo "✅ Generated file: docker-compose.generated.yml"
+echo '=== Starting containers ==='
 
 docker compose -f compose/docker-compose.generated.yml up -d
 
-echo "=== Esperando a que se descarguen los modelos y Ollama esté listo... ==="
-echo "Mostrando logs en tiempo real:"
+echo '=== Waiting for models to download and Ollama to be ready... ==='
+echo 'Showing logs in real time:'
 echo ""
 
-# Mostrar logs en tiempo real (filtrando los logs de peticiones HTTP [GIN])
 timeout 600 docker logs -f ollama 2>&1 | grep -v '\[GIN\]' &
 LOGS_PID=$!
 
@@ -80,7 +77,7 @@ while true; do
   elapsed=$((current_time - start_time))
   
   if [ $elapsed -gt $timeout_seconds ]; then
-    echo "Timeout esperando modelos"
+    echo "Timeout waiting for models"
     break
   fi
   
@@ -94,11 +91,10 @@ while true; do
   sleep 3
 done
 
-# Parar los logs forzadamente
 kill -5 $LOGS_PID 2>/dev/null
 wait $LOGS_PID 2>/dev/null
 
 echo ""
-echo "✅ Todo listo. Ollama + OpenWebUI están en marcha y los modelos están descargados."
-echo "🌐 Abre en tu navegador: http://localhost:8080"
-echo "📝 Ya puedes seleccionar los modelos (llama3, mistral, phi3) y tener conversaciones."
+echo '✅ All set. Ollama + OpenWebUI are up and running, and the models have been downloaded.'
+echo '🌐 Open in your browser: http://localhost:8080'
+echo '📝 You can now select the models (llama3, mistral, phi3) and have conversations.'

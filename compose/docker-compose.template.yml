@@ -35,26 +35,6 @@ services:
     networks:
       - llm_webui_network
 
-  # rag-service:
-  #   build: ./rag
-  #   container_name: rag-service
-  #   ports:
-  #     - "8000:8000"
-  #   volumes:
-  #     - ../data/documents:/app/documents  # Monta la carpeta de documentos
-  #     - chroma_data:/app/chroma_data  # Persiste la base de datos vectorial
-  #   environment:
-  #     - OLLAMA_BASE_URL=http://ollama:11434
-  #   depends_on:
-  #     - ollama
-  #   restart: unless-stopped
-  #   networks:
-  #     - llm_network
-
-# volumes:
-#   ollama_data:
-#   chroma_data:  # Volumen para persistir la base de datos vectorial
-
 networks:
   llm_webui_network:
     driver: bridge

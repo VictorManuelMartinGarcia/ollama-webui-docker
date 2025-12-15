@@ -1,16 +1,16 @@
-# Directorios de datos generados al desplegar
+# Data directories generated upon deployment
 data/ollama_data/
 data/openwebui_data/
 
-# Archivo de entorno local (ignorar .env pero no .env.example)
+# Local environment file (ignore .env but not .env.example)
 .env
 .env.local
 !.env.example
 
-# Archivos generados automáticamente
+# Automatically generated files
 compose/docker-compose.generated.yml
 
-# Archivos de sistema y temporales
+# System and temporary files
 .DS_Store
 .vscode/
 .idea/
@@ -26,7 +26,7 @@ logs/
 # IDE
 *.code-workspace
 
-# Dependencias
+# Dependencies
 node_modules/
 __pycache__/
 *.pyc

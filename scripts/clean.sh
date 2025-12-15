@@ -1,34 +1,34 @@
 #!/bin/bash
 
-echo "=== Limpiando ollama_webui ==="
-echo ""
-echo "⚠️  Esto eliminará:"
-echo "  - Contenedores Docker (Ollama y Open WebUI)"
-echo "  - Modelos descargados (ollama_data/)"
-echo "  - Datos de Open WebUI (openwebui_data/)"
-echo "  - Archivo docker-compose.generated.yml"
-echo ""
-read -p "¿Estás seguro? (s/n): " -n 1 -r
-echo ""
+echo '=== Cleaning ollama_webui ==='
+echo ''
+echo '⚠️  This will delete:'
+echo '  - Docker containers (Ollama and Open WebUI)'
+echo '  - Downloaded models (ollama_data/)'
+echo '  - Open WebUI data (openwebui_data/)'
+echo '  - docker-compose.generated.yml file'
+echo ''
+read -p 'Are you sure? (y/n): ' -n 1 -r
+echo ''
 
-if [[ ! $REPLY =~ ^[Ss]$ ]]; then
-  echo "Operación cancelada."
+if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+  echo 'Operation cancelled.'
   exit 1
 fi
 
-echo ""
-echo "Parando y eliminando contenedores..."
+echo ''
+echo 'Stopping and deleting containers...'
 docker compose -f compose/docker-compose.generated.yml down 2>/dev/null || true
 
-echo "Eliminando modelos descargados..."
+echo 'Deleting downloaded models...'
 sudo rm -rf data/ollama_data 2>/dev/null || rm -rf data/ollama_data
 
-echo "Eliminando datos de Open WebUI..."
+echo 'Deleting Open WebUI data...'
 sudo rm -rf data/openwebui_data 2>/dev/null || rm -rf data/openwebui_data
 
-echo "Eliminando archivo docker-compose.generated.yml..."
+echo 'Deleting docker-compose.generated.yml file...'
 rm -f compose/docker-compose.generated.yml
-echo ""
+echo ''
 
-echo "✅ Todo limpio. Proyecto restaurado al estado inicial."
-echo "Ejecuta ./start.sh para volver a comenzar."
+echo '✅ All clean. Project restored to initial state.'
+echo 'Run ./start.sh to start again.'
