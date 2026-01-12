@@ -31,4 +31,4 @@ rm -f compose/docker-compose.generated.yml
 echo ''
 
 echo '✅ All clean. Project restored to initial state.'
-echo 'Run ./start.sh to start again.'
+echo 'Run scripts/start.sh to start again.'

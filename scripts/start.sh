@@ -1,10 +1,19 @@
 #!/bin/bash
+set -e
 
-echo "=== Detecting  hardware ==="
+# =========================
+# Load .env if exists
+# =========================
+if [ -f .env ]; then
+  set -o allexport
+  source .env
+  set +o allexport
+fi
+
+echo "=== Detecting hardware ==="
 
 GPU_SECTION=""
 
-# NVIDIA
 if command -v nvidia-smi &>/dev/null; then
   echo "✅ GPU NVIDIA detected"
   GPU_SECTION="
@@ -15,13 +24,9 @@ if command -v nvidia-smi &>/dev/null; then
             - driver: nvidia
               count: 1
               capabilities:
-                - gpu
-  "
-
-# AMD ROCm
+                - gpu"
 elif command -v rocminfo &>/dev/null; then
   echo "✅ GPU AMD ROCm detected"
-  export HSA_OVERRIDE_GFX_VERSION=10.3.0
   GPU_SECTION="
     deploy:
       resources:
@@ -30,71 +35,133 @@ elif command -v rocminfo &>/dev/null; then
             - driver: amd
               count: 1
               capabilities:
-                - gpu
-  "
-
-# CPU
+                - gpu"
 else
-  echo "⚠️ No compatible GPU detected. Using CPU."
-  GPU_SECTION=""
+  echo "⚠️  No compatible GPU detected. Using CPU."
 fi
 
 echo "=== Generating docker-compose.generated.yml ==="
 
-if [[ -n "$GPU_SECTION" ]]; then
-  awk -v gpu="$GPU_SECTION" '
-      /container_name: ollama/ {print; getline; print; print gpu; next}
-      {print}
-    ' compose/docker-compose.template.yml > compose/docker-compose.generated.yml
+# =========================
+# Base compose
+# =========================
+cat > compose/docker-compose.generated.yml <<EOF
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: ollama
+    ports:
+      - "\${OLLAMA_PORT:-11434}:11434"
+    volumes:
+      - ../data/ollama_data:/root/.ollama
+      - ../config/ollama-init.sh:/app/ollama-init.sh:ro
+    restart: unless-stopped
+    entrypoint: ["/bin/bash", "/app/ollama-init.sh"]
+    networks:
+      - llm_webui_network
+$GPU_SECTION
+
+  open-webui:
+    image: ghcr.io/open-webui/open-webui:main
+    container_name: open-webui
+    ports:
+      - "\${WEBUI_PORT:-8080}:8080"
+    volumes:
+      - ../data/openwebui_data:/app/backend/data
+    environment:
+      - OLLAMA_BASE_URL=http://ollama:11434
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    networks:
+      - llm_webui_network
+EOF
+
+# =========================
+# Telegram bot
+# =========================
+if [ -n "$TELEGRAM_TOKEN" ]; then
+  cat >> compose/docker-compose.generated.yml <<EOF
+
+  telegram-bot:
+    build: ../telegram-bot
+    container_name: telegram-bot
+    environment:
+      - TELEGRAM_TOKEN=$TELEGRAM_TOKEN
+      - OLLAMA_BASE_URL=http://ollama:11434
+      - OLLAMA_MODEL=${TELEGRAM_BOT_MODEL:-phi3:latest}
+    depends_on:
+      - ollama
+    restart: unless-stopped
+    networks:
+      - llm_webui_network
+EOF
+  echo "✅ Telegram bot added to generated compose"
 else
-  awk '
-    BEGIN {skip=0}
-    /deploy:/ {skip=1}
-    skip && /capabilities:/ {skip=0; next}
-    skip {next}
-    {print}
-  ' compose/docker-compose.template.yml > compose/docker-compose.generated.yml
+  echo "⚠️ TELEGRAM_TOKEN not defined. Telegram bot will NOT be added."
 fi
 
-echo "✅ Generated file: docker-compose.generated.yml"
-echo '=== Starting containers ==='
+# =========================
+# Networks
+# =========================
+cat >> compose/docker-compose.generated.yml <<EOF
 
+networks:
+  llm_webui_network:
+    driver: bridge
+EOF
+
+echo "✅ Generated file: docker-compose.generated.yml"
+
+# =========================
+# Start containers
+# =========================
 docker compose -f compose/docker-compose.generated.yml up -d
 
-echo '=== Waiting for models to download and Ollama to be ready... ==='
-echo 'Showing logs in real time:'
-echo ""
+# =========================
+# Wait for models
+# =========================
+START_TIME=$(date +%s)
+TIMEOUT=1800   # 30 minutos
 
-timeout 600 docker logs -f ollama 2>&1 | grep -v '\[GIN\]' &
-LOGS_PID=$!
+# REQUIRED_MODELS=($OLLAMA_MODELS)
+read -r -a REQUIRED_MODELS <<< "$OLLAMA_MODELS"
 
-# Esperar a que los 3 modelos estén descargados
-start_time=$(date +%s)
-timeout_seconds=600
+echo "=== Waiting for Ollama & model (${REQUIRED_MODELS[@]}) downloads ==="
+echo "💤 This may take several minutes on first run..."
 
-while true; do
-  current_time=$(date +%s)
-  elapsed=$((current_time - start_time))
-  
-  if [ $elapsed -gt $timeout_seconds ]; then
-    echo "Timeout waiting for models"
-    break
+for model in "${REQUIRED_MODELS[@]}"; do
+  # Comprobar si ya está descargado
+  if docker exec ollama ollama list | grep -q "^$model"; then
+    echo "✅ $model already downloaded"
+    continue
   fi
+
+  echo "⏳ $model downloading..."
   
-  models_ready=$(docker exec ollama ollama list 2>/dev/null | grep -cE 'llama3|mistral|phi3')
-  
-  if [ "$models_ready" -eq 3 ]; then
-    sleep 1
-    break
-  fi
-  
-  sleep 3
+  START_TIME=$(date +%s)
+  TIMEOUT=1800   # 30 minutos
+
+  docker exec ollama ollama pull "$model" >/dev/null 2>&1
+
+  while true; do
+    sleep 2
+    if docker exec ollama ollama list | grep -q "^$model"; then
+      echo "✅ $model downloaded"
+      break
+    fi
+
+    NOW=$(date +%s)
+    if (( NOW - START_TIME > TIMEOUT )); then
+      echo "❌ Timeout waiting for $model"
+      exit 1
+    fi
+  done
 done
 
-kill -5 $LOGS_PID 2>/dev/null
-wait $LOGS_PID 2>/dev/null
+echo "✅ All models downloaded successfully"
 
 echo ""
-echo '✅ All set. Ollama + OpenWebUI are up and running, and the models have been downloaded.'
-echo '🌐 Open in your browser: http://localhost:8080'
-echo '📝 You can now select the models (llama3, mistral, phi3) and have conversations.'
+echo "🚀 All set!"
+echo "🌐 Open WebUI: http://localhost:8080"
+echo "🤖 Telegram bot is ready (if enabled)"

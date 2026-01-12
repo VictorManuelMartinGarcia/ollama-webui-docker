@@ -1,31 +1,38 @@
 #!/bin/bash
+set -e
 
 echo '[Ollama Init] Starting Ollama server...'
 
 ollama serve > /tmp/ollama-server.log 2>&1 &
 SERVER_PID=$!
 
-echo '[Ollama Init] Waiting for server to become available...'
+echo '[Ollama Init] Waiting for server...'
 for i in {1..60}; do
-  if ollama list > /dev/null 2>&1; then
-    echo '[Ollama Init] Ollama server ready'
+  if ollama list >/dev/null 2>&1; then
+    echo '[Ollama Init] Ollama ready'
     break
   fi
   sleep 1
 done
 
-echo '[Ollama Init] Starting model download...'
-echo '[Ollama Init] Downloading llama3...'
-ollama pull llama3 2>&1 | while IFS= read -r line; do echo '[llama3] $line'; done
+download_model() {
+  local model="$1"
 
-echo '[Ollama Init] Downloading mistral...'
-ollama pull mistral 2>&1 | while IFS= read -r line; do echo '[mistral] $line'; done
+  if ollama list | grep -q "^$model"; then
+    echo "[Ollama Init] ✔ $model already present"
+    return
+  fi
 
-echo '[Ollama Init] Downloading phi3...'
-ollama pull phi3 2>&1 | while IFS= read -r line; do echo '[phi3] $line'; done
+  echo "[Ollama Init] ⬇ Downloading $model..."
+  ollama pull "$model" >/dev/null
+  echo "[Ollama Init] ✅ $model downloaded"
+}
 
-echo '[Ollama Init] All models downloaded. Ollama server running.'
-echo '[Ollama Init] Available models:'
+download_model llama3
+download_model mistral
+download_model phi3
+
+echo '[Ollama Init] All models ready'
 ollama list
 
 wait $SERVER_PID

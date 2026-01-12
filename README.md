@@ -1,7 +1,7 @@
+# Ollama WebUI + Telegram Bot Docker
 
-# Ollama WebUI Docker
-
-A fully dockerised local chat system with language models (LLM), using Ollama and Open WebUI. Automatic hardware detection, automatic model downloads, and simple management with bash scripts.
+A fully dockerised local chat system with language models (LLM), using **Ollama**, **Open WebUI**, and an **optional Telegram bot**.  
+Automatic hardware detection, automatic model downloads, and simple management with bash scripts.
 
 > **Completely local** • No cloud dependencies • Guaranteed privacy
 
@@ -9,13 +9,15 @@ A fully dockerised local chat system with language models (LLM), using Ollama an
 
 ## ✨ Features
 
-- ✅ **Automatic hardware detection** - Automatically detects NVIDIA GPU, AMD ROCm, or CPU
-- ✅ **Automatic model download** - Llama3, Mistral, Phi3 download themselves on startup
-- ✅ **Modern interface** - Open WebUI with chat, history, and settings
-- ✅ **Data persistence** - Models and history are retained between restarts
-- ✅ **Utility scripts** - `start.sh` and `clean.sh` for easy management
-- ✅ **Completely private** - Everything runs locally, no external connections
-- ✅ **Easy to migrate** - Copy the folder to another machine and it works instantly
+- ✅ **Automatic hardware detection** – NVIDIA GPU, AMD ROCm, or CPU
+- ✅ **Automatic model downloads** – Models are pulled automatically on startup
+- ✅ **Web interface** – Open WebUI with chat, history, and settings
+- ✅ **Telegram bot (optional)** – Chat with your local LLM directly from Telegram
+- ✅ **Shared Ollama backend** – WebUI and Telegram bot use the same models
+- ✅ **Data persistence** – Models and chat history survive restarts
+- ✅ **Utility scripts** – `start.sh` and `clean.sh` for easy management
+- ✅ **Completely private** – Everything runs locally
+- ✅ **Portable** – Copy the folder to another machine and it just works
 
 ---
 
@@ -50,10 +52,19 @@ nano .env
 OLLAMA_PORT=11434
 WEBUI_PORT=8080
 
+# Models
+OLLAMA_MODELS="phi3 mistral"
+
 # Ollama configuration
 OLLAMA_KEEP_ALIVE=5m          # Keep model in memory
 OLLAMA_NUM_PARALLEL=1         # Parallel requests
+
+# Telegram bot (optional)
+TELEGRAM_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+TELEGRAM_BOT_MODEL=phi3
 ```
+
+> ⚠️ If TELEGRAM_TOKEN is not defined, the Telegram bot will not be deployed.
 
 ### First start-up (models will download automatically)
 
@@ -67,13 +78,15 @@ scripts/start.sh
 The script will do everything automatically:
 1. 🔍 Detect your hardware (GPU or CPU)
 2. 🔧 Generate optimised `docker-compose.generated.yml`
-3. 🐳 Start Ollama and Open WebUI (on the ports configured in `.env`)
-4. 📥 Download models (llama3, mistral, phi3)
+3. 🐳 Start Ollama, Open WebUI, and Telegram bot (if enabled); on the ports configured in `.env`
+4. 📥 Download models `OLLAMA_MODELS`
 5. ✅ Display message when ready
 
-**Estimated time:** 20-60 minutes (first time, depending on your connection)
+⏱ **Estimated time:** 10-60 minutes (first time, depending on your connection)
 
-### When you see ‘All set ✅’
+### 🌐 Access
+
+- **Web UI**
 
 Open in your browser (use the port you configured in `.env`):
 ```
@@ -82,6 +95,28 @@ http://localhost:{WEBUI_PORT}
 
 Select a model and start chatting. It's that simple!
 
+![openWebUIDemo](media/openWebUI.gif)
+
+- **Telegram**
+
+Start a chat with your bot on Telegram and send messages immediately.
+
+![telegramBotDemo](media/telegramBot.gif)
+
+> **How to create a Telegram bot & token (2 minutes):**
+> 1. Open Telegram and search for **@BotFather**
+> 2. Send `/start`
+> 3. Send `/newbot`
+> 4. Choose a name and username for your bot
+> 5. Copy the **Bot Token** provided by BotFather
+> 
+> Then add the token to your `.env` file:
+> ```env
+> TELEGRAM_TOKEN=YOUR_TELEGRAM_BOT_TOKEN
+> ```
+> 📖 Official Telegram docs:
+> https://core.telegram.org/bots#creating-a-new-bot
+
 ---
 
 ## 📂 Project Structure
@@ -89,15 +124,16 @@ Select a model and start chatting. It's that simple!
 ```
 ollama_webui/
 ├── scripts/                          # Main scripts
-│   ├──🚀 start.sh                    # Start everything (hardware detection + models)
+│   ├──🚀 start.sh                    # Start everything (hardware detection + startup  + models)
 │   └──🧹 clean.sh                    # Cleans containers + models + data
 │
 ├── config/                           # ⚙️ Service configuration
 │   └──🔧 ollama-init.sh              # Ollama initialisation (downloads models)
 │
 ├── compose/                          # 🐳 Docker Compose
-│   ├── docker-compose.template.yml   # Base template (uses .env variables)
 │   └── docker-compose.generated.yml  # Created automatically (do not upload to Git)
+│
+├── telegram-bot/                  # 🤖 Telegram bot service
 │
 ├── 📁 data/                         # 💾 Persistent data (ignore in Git)
 │   ├── ollama_data/                  # Downloaded models
@@ -118,7 +154,7 @@ ollama_webui/
 
 ```bash
 # First time - download models and start everything
-./start.sh
+scripts/start.sh
 
 # Stop containers (keeps data)
 docker compose -f compose/docker-compose.generated.yml stop
@@ -127,7 +163,7 @@ docker compose -f compose/docker-compose.generated.yml stop
 docker compose -f compose/docker-compose.generated.yml start
 
 # Clean everything (deletes containers, models, data)
-./clean.sh
+scripts/clean.sh
 ```
 
 ### View status
@@ -212,14 +248,24 @@ ollama pull phi3 2>&1 | while IFS= read -r line; do echo ‘[phi3] $line’; don
 
 After changing, run `./start.sh` to download the new models.
 
+### Telegram bot configuration
+
+- Uses the same Ollama instance as WebUI
+- Model used by the bot is defined via:
+```bash
+TELEGRAM_BOT_MODEL=phi3
+```
+
+You can switch models without restarting containers by downloading them first.
+
 ### Configure GPU manually
 
 If `start.sh` does not detect your GPU correctly:
 
-1. Edit `docker-compose.template.yml` and find the `deploy` section in the `ollama` service
+1. Edit `scripts/start.sh` and locate the hardware detection section where the `ollama` service GPU configuration is generated (`GPU_SECTION`).
 
 2. **For NVIDIA:**
-```yaml
+   ```yaml
    deploy:
      resources:
        reservations:
@@ -302,7 +348,7 @@ cp -r ollama_webui /path/destination/
 
 # On the new machine
 cd ollama_webui
-./start.sh  # Will continue with already downloaded models
+scripts/start.sh  # Will continue with already downloaded models
 ```
 
 ### First run
